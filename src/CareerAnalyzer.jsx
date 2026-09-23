@@ -2,8 +2,8 @@ import { useState } from "react";
 import { supabase } from "./supabaseClient";
 
 function CareerAnalyzer({ user }) {
-  const [formData, setFormData] = useState({
-    name: "",
+  const [form, setForm] = useState({
+    name: user?.user_metadata?.full_name || "",
     branch: "",
     year: "",
     cgpa: "",
@@ -13,8 +13,8 @@ function CareerAnalyzer({ user }) {
 
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
   const [showReport, setShowReport] = useState(false);
-  const [error, setError] = useState("");
 
   const roleSkills = {
     "Software Developer": [
@@ -66,358 +66,104 @@ function CareerAnalyzer({ user }) {
     ],
   };
 
-  const roleProjects = {
-    "Software Developer": [
-      "Student Management System",
-      "Expense Tracker Web App",
-      "E-Commerce Application",
-    ],
+  const handleChange = (event) => {
+    const { name, value } = event.target;
 
-    "AI/ML Engineer": [
-      "Student Performance Prediction",
-      "Resume Screening AI",
-      "Image Classification System",
-    ],
-
-    "Data Analyst": [
-      "Student Performance Dashboard",
-      "Sales Analytics Dashboard",
-      "Customer Data Analysis",
-    ],
-
-    "Data Scientist": [
-      "Customer Churn Prediction",
-      "House Price Prediction",
-      "Recommendation System",
-    ],
-
-    "Web Developer": [
-      "Portfolio Website",
-      "E-Commerce Website",
-      "College Event Management Website",
-    ],
-
-    "UI/UX Designer": [
-      "Student Learning App",
-      "Career Guidance App",
-      "College Dashboard Redesign",
-    ],
-  };
-
-  const roleRoadmaps = {
-    "Software Developer": [
-      {
-        period: "Days 1–30",
-        title: "Programming + DSA",
-        items: [
-          "Strengthen JavaScript fundamentals",
-          "Practice arrays, strings and objects",
-          "Learn Git and GitHub",
-          "Solve 2–3 coding problems per day",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "Development Skills",
-        items: [
-          "Learn React fundamentals",
-          "Build reusable components",
-          "Learn REST APIs",
-          "Practice SQL queries",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Projects + Interview",
-        items: [
-          "Build one complete project",
-          "Deploy the project",
-          "Improve GitHub profile",
-          "Practice technical interviews",
-        ],
-      },
-    ],
-
-    "AI/ML Engineer": [
-      {
-        period: "Days 1–30",
-        title: "Python + Mathematics",
-        items: [
-          "Strengthen Python",
-          "Learn NumPy and Pandas",
-          "Revise statistics",
-          "Practice data preprocessing",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "Machine Learning",
-        items: [
-          "Learn supervised learning",
-          "Learn unsupervised learning",
-          "Practice model evaluation",
-          "Build small ML projects",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Deep Learning + Projects",
-        items: [
-          "Learn neural networks",
-          "Explore computer vision or NLP",
-          "Build an AI project",
-          "Prepare for AI/ML interviews",
-        ],
-      },
-    ],
-
-    "Data Analyst": [
-      {
-        period: "Days 1–30",
-        title: "Data Fundamentals",
-        items: [
-          "Learn Excel",
-          "Practice SQL",
-          "Learn data cleaning",
-          "Study descriptive statistics",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "Visualization",
-        items: [
-          "Learn Power BI",
-          "Create dashboards",
-          "Practice data storytelling",
-          "Work with real datasets",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Portfolio + Jobs",
-        items: [
-          "Build 2 analytics projects",
-          "Publish dashboards",
-          "Improve resume",
-          "Practice analyst interviews",
-        ],
-      },
-    ],
-
-    "Data Scientist": [
-      {
-        period: "Days 1–30",
-        title: "Python + Statistics",
-        items: [
-          "Strengthen Python",
-          "Learn Pandas",
-          "Revise statistics",
-          "Practice data analysis",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "Machine Learning",
-        items: [
-          "Learn regression",
-          "Learn classification",
-          "Learn clustering",
-          "Practice model evaluation",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Projects + Deployment",
-        items: [
-          "Build an end-to-end project",
-          "Create a GitHub portfolio",
-          "Learn basic deployment",
-          "Prepare for interviews",
-        ],
-      },
-    ],
-
-    "Web Developer": [
-      {
-        period: "Days 1–30",
-        title: "Web Fundamentals",
-        items: [
-          "Learn HTML",
-          "Learn CSS",
-          "Practice responsive design",
-          "Strengthen JavaScript",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "React Development",
-        items: [
-          "Learn React",
-          "Build reusable components",
-          "Learn API integration",
-          "Practice Git/GitHub",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Portfolio + Deployment",
-        items: [
-          "Build 2 strong websites",
-          "Deploy projects",
-          "Create portfolio",
-          "Prepare for frontend interviews",
-        ],
-      },
-    ],
-
-    "UI/UX Designer": [
-      {
-        period: "Days 1–30",
-        title: "Design Fundamentals",
-        items: [
-          "Learn design principles",
-          "Practice Figma",
-          "Study typography and color",
-          "Learn user research basics",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "UX Process",
-        items: [
-          "Create user personas",
-          "Build user flows",
-          "Practice wireframing",
-          "Create prototypes",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Portfolio + Case Studies",
-        items: [
-          "Complete 2 case studies",
-          "Create high-fidelity designs",
-          "Build a design portfolio",
-          "Prepare for design interviews",
-        ],
-      },
-    ],
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
+    setForm((previous) => ({
+      ...previous,
       [name]: value,
     }));
-
-    setError("");
   };
 
-  const analyzeCareer = async (e) => {
-    e.preventDefault();
+  const analyzeCareer = async (event) => {
+    event.preventDefault();
 
-    setError("");
+    setMessage("");
+    setResult(null);
     setShowReport(false);
 
     if (!user) {
-      setError("Please login before analyzing your career.");
-      return;
-    }
-
-    if (
-      !formData.name ||
-      !formData.branch ||
-      !formData.year ||
-      !formData.cgpa ||
-      !formData.targetRole ||
-      !formData.skills
-    ) {
-      setError("Please fill in all the fields.");
-      return;
-    }
-
-    const cgpaNumber = Number(formData.cgpa);
-
-    if (Number.isNaN(cgpaNumber) || cgpaNumber < 0 || cgpaNumber > 10) {
-      setError("Please enter a valid CGPA between 0 and 10.");
+      setMessage("Please login before analyzing your career.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const requiredSkills = roleSkills[formData.targetRole] || [];
-
-      const userSkills = formData.skills
+      const studentSkills = form.skills
         .toLowerCase()
         .split(",")
         .map((skill) => skill.trim())
         .filter(Boolean);
 
-      const matchedSkills = requiredSkills.filter((skill) =>
-        userSkills.some(
-          (userSkill) =>
-            userSkill === skill ||
-            userSkill.includes(skill) ||
-            skill.includes(userSkill)
+      const requiredSkills = roleSkills[form.targetRole] || [];
+
+      const matchedSkills = requiredSkills.filter((requiredSkill) =>
+        studentSkills.some(
+          (studentSkill) =>
+            studentSkill === requiredSkill ||
+            studentSkill.includes(requiredSkill) ||
+            requiredSkill.includes(studentSkill)
         )
       );
 
       const missingSkills = requiredSkills.filter(
-        (skill) => !matchedSkills.includes(skill)
+        (requiredSkill) => !matchedSkills.includes(requiredSkill)
       );
 
       const skillScore =
         requiredSkills.length > 0
-          ? (matchedSkills.length / requiredSkills.length) * 100
+          ? Math.round(
+              (matchedSkills.length / requiredSkills.length) * 100
+            )
           : 0;
 
-      const cgpaScore = Math.min(100, (cgpaNumber / 10) * 100);
+      const cgpaScore = Math.min(
+        100,
+        Math.round((Number(form.cgpa) / 10) * 100)
+      );
 
       const readinessScore = Math.round(
         skillScore * 0.7 + cgpaScore * 0.3
       );
 
-      const profileData = {
-        id: user.id,
-        full_name: formData.name,
-        branch: formData.branch,
-        year: formData.year,
-        cgpa: cgpaNumber,
-        target_role: formData.targetRole,
-        skills: userSkills.join(", "),
-        readiness_score: readinessScore,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: saveError } = await supabase
-        .from("profiles")
-        .upsert(profileData, {
+      const { error } = await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          full_name: form.name,
+          branch: form.branch,
+          year: form.year,
+          cgpa: Number(form.cgpa),
+          target_role: form.targetRole,
+          skills: form.skills,
+          readiness_score: readinessScore,
+          updated_at: new Date().toISOString(),
+        },
+        {
           onConflict: "id",
-        });
+        }
+      );
 
-      if (saveError) {
-        console.error("Profile save error:", saveError);
+      if (error) {
+        throw error;
       }
 
       setResult({
         score: readinessScore,
-        skillScore: Math.round(skillScore),
-        cgpaScore: Math.round(cgpaScore),
+        skillScore,
+        cgpaScore,
         matchedSkills,
         missingSkills,
-        targetRole: formData.targetRole,
-        userSkills,
-        cgpa: cgpaNumber,
-        name: formData.name,
-        branch: formData.branch,
-        year: formData.year,
+        targetRole: form.targetRole,
       });
-    } catch (err) {
-      console.error(err);
-      setError("Something went wrong while analyzing your career.");
+
+      setMessage("Career profile saved successfully!");
+    } catch (error) {
+      console.error("Career analysis error:", error);
+
+      setMessage(
+        error.message || "Unable to save your career profile."
+      );
     } finally {
       setLoading(false);
     }
@@ -427,775 +173,850 @@ function CareerAnalyzer({ user }) {
     if (!result) return "";
 
     if (result.score >= 80) {
-      return "You have a strong foundation for your target role. Focus on projects, interview preparation and improving your professional profile.";
+      return `Your current profile shows a strong foundation for ${result.targetRole}. Focus on advanced projects, interview preparation and demonstrating your skills through real-world work.`;
     }
 
     if (result.score >= 60) {
-      return "You are on the right track. Strengthen your missing skills and build practical projects to become more job-ready.";
+      return `You have a good starting foundation for ${result.targetRole}. Strengthen your missing skills and build practical projects to improve your job readiness.`;
     }
 
-    return "Your current foundation needs improvement. Focus on the missing skills first, then build projects and practice interview questions.";
+    return `You are at the beginning of your ${result.targetRole} journey. Focus on the missing skills one by one and build small projects as you learn.`;
   };
 
-  const getScoreLabel = () => {
-    if (!result) return "";
-
-    if (result.score >= 80) return "Strong Foundation";
-    if (result.score >= 60) return "Developing";
-    return "Needs Improvement";
-  };
-
-  const getScoreClass = () => {
-    if (!result) return "";
-
-    if (result.score >= 80) return "score-good";
-    if (result.score >= 60) return "score-medium";
-    return "score-low";
-  };
-
-  const roadmap =
-    roleRoadmaps[result?.targetRole] || [
-      {
-        period: "Days 1–30",
-        title: "Build Fundamentals",
-        items: [
-          "Strengthen your core skills",
-          "Practice regularly",
-          "Complete small projects",
-        ],
-      },
-      {
-        period: "Days 31–60",
-        title: "Build Projects",
-        items: [
-          "Create practical projects",
-          "Publish your work",
-          "Improve your GitHub profile",
-        ],
-      },
-      {
-        period: "Days 61–90",
-        title: "Job Preparation",
-        items: [
-          "Improve your resume",
-          "Practice interviews",
-          "Start applying for suitable opportunities",
-        ],
-      },
-    ];
-
-  const recommendedProjects =
-    roleProjects[result?.targetRole] || [
-      "Personal Portfolio Website",
-      "Student Management System",
-      "Career Guidance Application",
-    ];
+  const roadmap = [
+    {
+      week: "WEEK 1",
+      title: "Strengthen Fundamentals",
+      description:
+        "Focus on the most important fundamentals required for your target role.",
+    },
+    {
+      week: "WEEK 2",
+      title: "Build Missing Skills",
+      description: result?.missingSkills?.length
+        ? `Work specifically on ${result.missingSkills
+            .slice(0, 2)
+            .join(" and ")}.`
+        : "Strengthen your existing technical skills.",
+    },
+    {
+      week: "WEEK 3",
+      title: "Build a Real Project",
+      description:
+        "Convert your learning into practical portfolio experience.",
+    },
+    {
+      week: "WEEK 4",
+      title: "Prepare for Jobs",
+      description:
+        "Improve your resume, interview skills and application strategy.",
+    },
+  ];
 
   return (
-    <div className="analyzer-page">
+    <section className="analyzer-page">
+      <style>{`
+        .careerpilot-premium {
+          margin-top: 32px;
+          padding: 32px;
+          border-radius: 24px;
+          background: linear-gradient(135deg, #17164d, #302b78);
+          color: white;
+          box-shadow: 0 20px 50px rgba(40, 35, 100, 0.22);
+        }
+
+        .premium-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.14);
+          color: #ffffff;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          margin-bottom: 18px;
+        }
+
+        .premium-heading {
+          margin: 0 0 10px;
+          font-size: 30px;
+          line-height: 1.2;
+          color: #ffffff;
+        }
+
+        .premium-description {
+          margin: 0 0 24px;
+          max-width: 760px;
+          line-height: 1.7;
+          color: rgba(255,255,255,0.78);
+        }
+
+        .premium-benefits {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          margin: 20px 0 28px;
+        }
+
+        .premium-benefit {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          background: rgba(255,255,255,0.08);
+          color: #ffffff;
+          line-height: 1.45;
+        }
+
+        .premium-check {
+          flex-shrink: 0;
+          font-weight: 900;
+          color: #9ff6bd;
+        }
+
+        .premium-bottom {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 20px;
+          padding-top: 24px;
+          border-top: 1px solid rgba(255,255,255,0.14);
+        }
+
+        .premium-price {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .premium-price strong {
+          font-size: 30px;
+          line-height: 1;
+          color: #ffffff;
+        }
+
+        .premium-price span {
+          font-size: 13px;
+          color: rgba(255,255,255,0.68);
+        }
+
+        .premium-button {
+          border: none;
+          border-radius: 12px;
+          padding: 14px 22px;
+          background: #ffffff;
+          color: #28245f;
+          font-size: 15px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: 0.2s ease;
+        }
+
+        .premium-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .premium-preview {
+          margin-top: 28px;
+          padding: 28px;
+          border-radius: 20px;
+          background: #ffffff;
+          color: #1e2545;
+          border: 1px solid #e5e7f4;
+        }
+
+        .premium-preview-header {
+          margin-bottom: 24px;
+        }
+
+        .premium-preview-label {
+          display: block;
+          margin-bottom: 8px;
+          color: #5146d8;
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: 1px;
+        }
+
+        .premium-preview-header h2 {
+          margin: 0 0 8px;
+          font-size: 26px;
+          color: #1e2545;
+        }
+
+        .premium-preview-header p {
+          margin: 0;
+          color: #667085;
+          line-height: 1.6;
+        }
+
+        .report-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .report-box {
+          padding: 20px;
+          border-radius: 16px;
+          background: #f7f8ff;
+          border: 1px solid #e8e9f5;
+        }
+
+        .report-box h3 {
+          margin: 0 0 10px;
+          color: #252b52;
+          font-size: 17px;
+        }
+
+        .report-box p {
+          margin: 0;
+          color: #667085;
+          line-height: 1.6;
+        }
+
+        .report-list {
+          margin: 0;
+          padding-left: 20px;
+          color: #667085;
+        }
+
+        .report-list li {
+          margin-bottom: 8px;
+          line-height: 1.5;
+        }
+
+        .report-close {
+          margin-top: 22px;
+          border: 1px solid #d9dbed;
+          background: white;
+          color: #30365f;
+          padding: 11px 18px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-weight: 700;
+        }
+
+        @media (max-width: 700px) {
+          .premium-benefits,
+          .report-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .premium-bottom {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .premium-button {
+            width: 100%;
+          }
+
+          .careerpilot-premium {
+            padding: 22px;
+          }
+        }
+      `}</style>
+
       <div className="analyzer-container">
+
+        {/* INTRO */}
         <div className="analyzer-intro">
-          <div className="analyzer-intro-icon">🎯</div>
+          <span>🎯 CAREER ANALYZER</span>
 
-          <div>
-            <span className="section-eyebrow">CAREERPILOT AI</span>
+          <h2>Discover Your Career Readiness</h2>
 
-            <h1>Career Analyzer</h1>
-
-            <p>
-              Understand your current job readiness, identify missing skills
-              and get a personalized career preparation roadmap.
-            </p>
-          </div>
+          <p>
+            Tell CareerPilot AI about your education, skills and target
+            role. We'll analyze your current profile and identify
+            important skill gaps.
+          </p>
         </div>
 
+        {/* FORM */}
         <form className="career-form" onSubmit={analyzeCareer}>
+
           <div className="form-group">
-            <label htmlFor="name">Full Name</label>
+            <label>Full Name</label>
 
             <input
-              id="name"
-              name="name"
               type="text"
-              placeholder="Enter your full name"
-              value={formData.name}
+              name="name"
+              value={form.name}
               onChange={handleChange}
+              placeholder="Enter your full name"
+              required
             />
           </div>
 
           <div className="form-row">
+
             <div className="form-group">
-              <label htmlFor="branch">Branch</label>
+              <label>Branch</label>
 
               <input
-                id="branch"
-                name="branch"
                 type="text"
-                placeholder="e.g. CSE, AIML, ECE"
-                value={formData.branch}
+                name="branch"
+                value={form.branch}
                 onChange={handleChange}
+                placeholder="e.g. CSE / AIML"
+                required
               />
             </div>
 
             <div className="form-group">
-              <label htmlFor="year">Year</label>
+              <label>Year</label>
 
               <select
-                id="year"
                 name="year"
-                value={formData.year}
+                value={form.year}
                 onChange={handleChange}
+                required
               >
                 <option value="">Select year</option>
                 <option value="1st Year">1st Year</option>
                 <option value="2nd Year">2nd Year</option>
                 <option value="3rd Year">3rd Year</option>
                 <option value="4th Year">4th Year</option>
-                <option value="Graduate">Graduate</option>
               </select>
             </div>
+
           </div>
 
           <div className="form-row">
+
             <div className="form-group">
-              <label htmlFor="cgpa">CGPA</label>
+              <label>CGPA</label>
 
               <input
-                id="cgpa"
-                name="cgpa"
                 type="number"
+                name="cgpa"
+                value={form.cgpa}
+                onChange={handleChange}
+                placeholder="e.g. 8.2"
                 min="0"
                 max="10"
                 step="0.01"
-                placeholder="e.g. 7.8"
-                value={formData.cgpa}
-                onChange={handleChange}
+                required
               />
             </div>
 
             <div className="form-group">
-              <label htmlFor="targetRole">Target Role</label>
+              <label>Target Role</label>
 
               <select
-                id="targetRole"
                 name="targetRole"
-                value={formData.targetRole}
+                value={form.targetRole}
                 onChange={handleChange}
+                required
               >
                 <option value="">Select target role</option>
 
                 {Object.keys(roleSkills).map((role) => (
-                  <option key={role} value={role}>
+                  <option value={role} key={role}>
                     {role}
                   </option>
                 ))}
               </select>
             </div>
+
           </div>
 
           <div className="form-group">
-            <label htmlFor="skills">
-              Current Skills
-              <span className="field-hint">
-                Separate skills with commas
-              </span>
-            </label>
+            <label>Your Skills</label>
 
-            <textarea
-              id="skills"
+            <input
+              type="text"
               name="skills"
-              rows="4"
-              placeholder="Python, SQL, Machine Learning, Git"
-              value={formData.skills}
+              value={form.skills}
               onChange={handleChange}
+              placeholder="Python, SQL, Git, Machine Learning"
+              required
             />
+
+            <small>
+              Separate multiple skills with commas.
+            </small>
           </div>
 
-          {error && <div className="auth-message">{error}</div>}
-
           <button
-            type="submit"
             className="analyze-btn"
+            type="submit"
             disabled={loading}
           >
-            {loading ? (
-              <>
-                <span className="button-spinner"></span>
-                Analyzing your career...
-              </>
-            ) : (
-              <>✨ Analyze My Career</>
-            )}
+            {loading ? "Analyzing..." : "Analyze My Career →"}
           </button>
         </form>
 
+        {/* MESSAGE */}
+        {message && (
+          <div className="auth-message">
+            {message}
+          </div>
+        )}
+
+        {/* RESULTS */}
         {result && (
           <>
             <div className="result-card">
+
               <div className="result-top">
+
                 <div>
-                  <span className="result-label">YOUR CAREER READINESS</span>
+                  <span>CAREER ANALYSIS</span>
 
-                  <h2>{getScoreLabel()}</h2>
-
-                  <p>
-                    Your current profile has been analyzed for the{" "}
-                    <strong>{result.targetRole}</strong> role.
-                  </p>
+                  <h3>{result.targetRole}</h3>
                 </div>
 
-                <div className={`score-circle ${getScoreClass()}`}>
-                  <strong>{result.score}</strong>
-                  <span>/100</span>
+                <div className="score-circle">
+                  <strong>{result.score}%</strong>
+                  <span>Readiness</span>
                 </div>
+
               </div>
 
               <div className="result-columns">
+
                 <div className="result-section">
-                  <div className="result-section-heading">
-                    <span>🧩</span>
-                    <h3>Matched Skills</h3>
+                  <h4>✅ Skills You Have</h4>
+
+                  <div className="skill-list">
+
+                    {result.matchedSkills.length > 0 ? (
+                      result.matchedSkills.map((skill) => (
+                        <span
+                          className="matched"
+                          key={skill}
+                        >
+                          {skill}
+                        </span>
+                      ))
+                    ) : (
+                      <p>No matching skills yet.</p>
+                    )}
+
+                  </div>
+                </div>
+
+                <div className="result-section">
+                  <h4>📚 Skills To Improve</h4>
+
+                  <div className="skill-list">
+
+                    {result.missingSkills.length > 0 ? (
+                      result.missingSkills.map((skill) => (
+                        <span
+                          className="missing"
+                          key={skill}
+                        >
+                          {skill}
+                        </span>
+                      ))
+                    ) : (
+                      <p>
+                        Great! You have all the listed skills.
+                      </p>
+                    )}
+
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="roadmap-preview">
+                <span>💡</span>
+
+                <div>
+                  <small>NEXT STEP</small>
+
+                  <strong>
+                    Build projects and strengthen your missing
+                    skills.
+                  </strong>
+                </div>
+              </div>
+
+            </div>
+
+            {/* AI ANALYSIS */}
+            <div className="ai-analysis">
+
+              <div className="ai-analysis-header">
+
+                <div>
+
+                  <span className="ai-label">
+                    🤖 CAREERPILOT AI INSIGHT
+                  </span>
+
+                  <h2>
+                    Your Personalized Career Analysis
+                  </h2>
+
+                  <p>
+                    Based on the information you provided, here is
+                    your current career profile and suggested
+                    improvement path.
+                  </p>
+
+                </div>
+
+                <div className="ai-score">
+                  <strong>{result.score}%</strong>
+                  <span>Readiness</span>
+                </div>
+
+              </div>
+
+              <div className="ai-analysis-grid">
+
+                <div className="ai-analysis-box">
+
+                  <div className="ai-box-icon">
+                    💪
                   </div>
 
+                  <h3>Your Strengths</h3>
+
                   {result.matchedSkills.length > 0 ? (
-                    <div className="skill-list">
+                    <div className="ai-skill-list">
+
                       {result.matchedSkills.map((skill) => (
                         <span
-                          className="skill-tag matched"
+                          className="ai-skill matched"
                           key={skill}
                         >
                           ✓ {skill}
                         </span>
                       ))}
+
                     </div>
                   ) : (
-                    <p className="empty-result">
-                      No matching skills found yet.
+                    <p>
+                      You haven't matched any of the main
+                      role-specific skills yet.
                     </p>
                   )}
+
                 </div>
 
-                <div className="result-section">
-                  <div className="result-section-heading">
-                    <span>🚧</span>
-                    <h3>Missing Skills</h3>
+                <div className="ai-analysis-box">
+
+                  <div className="ai-box-icon">
+                    📚
                   </div>
 
+                  <h3>Priority Skill Gaps</h3>
+
                   {result.missingSkills.length > 0 ? (
-                    <div className="skill-list">
+                    <div className="ai-skill-list">
+
                       {result.missingSkills.map((skill) => (
                         <span
-                          className="skill-tag missing"
+                          className="ai-skill missing"
                           key={skill}
                         >
                           + {skill}
                         </span>
                       ))}
+
                     </div>
                   ) : (
-                    <p className="empty-result">
-                      Great! You matched all the core skills.
+                    <p>
+                      You currently match all the listed skills
+                      for this role.
                     </p>
                   )}
+
                 </div>
+
               </div>
 
-              <div className="ai-analysis">
-                <div className="ai-analysis-header">
-                  <div>
-                    <span className="ai-label">AI-STYLE ANALYSIS</span>
+              {/* ADVICE */}
+              <div className="ai-advice">
 
-                    <h3>Your Career Snapshot</h3>
-                  </div>
+                <div className="ai-advice-icon">
+                  💡
+                </div>
 
-                  <span className="ai-score">
-                    {result.score}% ready
+                <div>
+
+                  <span>
+                    PERSONALIZED ADVICE
                   </span>
+
+                  <h3>
+                    {getAdvice()}
+                  </h3>
+
+                  <p>
+                    CareerPilot has identified your current
+                    strengths and skill gaps. Use the roadmap below
+                    as a starting point for your preparation.
+                  </p>
+
                 </div>
 
-                <div className="ai-analysis-grid">
-                  <div className="ai-analysis-box">
-                    <div className="ai-box-icon">💻</div>
-
-                    <div>
-                      <span>Skill Match</span>
-                      <strong>{result.skillScore}%</strong>
-                    </div>
-                  </div>
-
-                  <div className="ai-analysis-box">
-                    <div className="ai-box-icon">🎓</div>
-
-                    <div>
-                      <span>Academic Score</span>
-                      <strong>{result.cgpaScore}%</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ai-advice">
-                  <div className="ai-advice-icon">💡</div>
-
-                  <div>
-                    <strong>CareerPilot Advice</strong>
-
-                    <p>{getAdvice()}</p>
-                  </div>
-                </div>
               </div>
 
-              <div className="roadmap-preview">
+              {/* ROADMAP */}
+              <div className="roadmap-section">
+
                 <div className="roadmap-heading">
-                  <div>
-                    <span className="ai-label">START HERE</span>
 
-                    <h3>Your 30-Day Action Plan</h3>
-                  </div>
-
-                  <span className="roadmap-badge">
-                    Free Preview
+                  <span>
+                    🛣️ YOUR STARTING ROADMAP
                   </span>
+
+                  <h2>
+                    30-Day Career Plan
+                  </h2>
+
+                  <p>
+                    A practical starting plan based on your current
+                    career analysis.
+                  </p>
+
                 </div>
 
                 <div className="roadmap-grid">
-                  <div className="roadmap-card">
-                    <span className="roadmap-week">WEEK 1</span>
 
-                    <h4>Strengthen Fundamentals</h4>
+                  {roadmap.map((item) => (
+                    <div
+                      className="roadmap-card"
+                      key={item.week}
+                    >
 
-                    <p>
-                      Focus on the most important fundamentals required
-                      for your target role.
-                    </p>
-                  </div>
+                      <span className="roadmap-week">
+                        {item.week}
+                      </span>
 
-                  <div className="roadmap-card">
-                    <span className="roadmap-week">WEEK 2</span>
+                      <h3>
+                        {item.title}
+                      </h3>
 
-                    <h4>Build Missing Skills</h4>
+                      <p>
+                        {item.description}
+                      </p>
 
-                    <p>
-                      Work specifically on the skills identified in
-                      your career analysis.
-                    </p>
-                  </div>
+                    </div>
+                  ))}
 
-                  <div className="roadmap-card">
-                    <span className="roadmap-week">WEEK 3</span>
-
-                    <h4>Build a Real Project</h4>
-
-                    <p>
-                      Convert your learning into practical portfolio
-                      experience.
-                    </p>
-                  </div>
-
-                  <div className="roadmap-card">
-                    <span className="roadmap-week">WEEK 4</span>
-
-                    <h4>Prepare for Jobs</h4>
-
-                    <p>
-                      Improve your resume, interview skills and
-                      application strategy.
-                    </p>
-                  </div>
                 </div>
+
               </div>
-            </div>
 
-            {/* CAREERPILOT PLUS ₹49 SECTION */}
-            <div className="premium-report-card">
-              <div className="premium-report-glow"></div>
+              <div className="ai-disclaimer">
 
-              <div className="premium-report-content">
-                <div className="premium-report-top">
-                  <span className="premium-badge">
-                    🚀 CAREERPILOT PLUS
-                  </span>
-
-                  <span className="premium-preview-badge">
-                    PREVIEW
-                  </span>
-                </div>
-
-                <h2>Get Your Detailed Career Report</h2>
+                <span>ℹ️</span>
 
                 <p>
-                  Go beyond your basic readiness score with a detailed
-                  career preparation plan designed around your target
-                  role and current skill level.
+                  This analysis is based on the profile information
+                  you provided. It is career guidance and does not
+                  guarantee employment or hiring outcomes.
                 </p>
 
-                <div className="premium-features">
-                  <div className="premium-feature">
-                    <span>✓</span>
-                    <span>Detailed skill-gap analysis</span>
-                  </div>
+              </div>
 
-                  <div className="premium-feature">
-                    <span>✓</span>
-                    <span>90-day personalized roadmap</span>
-                  </div>
+            </div>
 
-                  <div className="premium-feature">
-                    <span>✓</span>
-                    <span>Recommended projects for your role</span>
-                  </div>
+            {/* PREMIUM SECTION */}
+            <div className="careerpilot-premium">
 
-                  <div className="premium-feature">
-                    <span>✓</span>
-                    <span>Resume improvement checklist</span>
-                  </div>
+              <div className="premium-badge">
+                🚀 CAREERPILOT PLUS
+              </div>
 
-                  <div className="premium-feature">
-                    <span>✓</span>
-                    <span>Interview preparation topics</span>
-                  </div>
+              <h2 className="premium-heading">
+                Get Your Detailed Career Report
+              </h2>
 
-                  <div className="premium-feature">
-                    <span>✓</span>
-                    <span>Job-readiness checklist</span>
-                  </div>
+              <p className="premium-description">
+                Go beyond your basic readiness score with a detailed
+                career preparation plan designed around your target
+                role and current skill level.
+              </p>
+
+              <div className="premium-benefits">
+
+                <div className="premium-benefit">
+                  <span className="premium-check">✓</span>
+                  <span>Detailed skill-gap analysis</span>
                 </div>
 
-                <div className="premium-bottom">
-                  <div className="premium-price-area">
-                    <span className="premium-price">₹49</span>
+                <div className="premium-benefit">
+                  <span className="premium-check">✓</span>
+                  <span>90-day personalized roadmap</span>
+                </div>
 
-                    <span className="premium-one-time">
-                      one-time
+                <div className="premium-benefit">
+                  <span className="premium-check">✓</span>
+                  <span>Recommended projects for your role</span>
+                </div>
+
+                <div className="premium-benefit">
+                  <span className="premium-check">✓</span>
+                  <span>Resume improvement checklist</span>
+                </div>
+
+                <div className="premium-benefit">
+                  <span className="premium-check">✓</span>
+                  <span>Interview preparation topics</span>
+                </div>
+
+                <div className="premium-benefit">
+                  <span className="premium-check">✓</span>
+                  <span>Job-readiness checklist</span>
+                </div>
+
+              </div>
+
+              <div className="premium-bottom">
+
+                <div className="premium-price">
+                  <strong>₹49</strong>
+                  <span>One-time payment</span>
+                </div>
+
+                <button
+                  type="button"
+                  className="premium-button"
+                  onClick={() => setShowReport(true)}
+                >
+                  Preview Detailed Report →
+                </button>
+
+              </div>
+
+              {/* REPORT PREVIEW */}
+              {showReport && (
+                <div className="premium-preview">
+
+                  <div className="premium-preview-header">
+
+                    <span className="premium-preview-label">
+                      🚀 CAREERPILOT PLUS PREVIEW
                     </span>
+
+                    <h2>
+                      Your Detailed Career Report
+                    </h2>
+
+                    <p>
+                      This is a preview of the information that
+                      CareerPilot Plus can provide.
+                    </p>
+
+                  </div>
+
+                  <div className="report-grid">
+
+                    <div className="report-box">
+
+                      <h3>
+                        📊 Skill Gap Analysis
+                      </h3>
+
+                      <p>
+                        Your current skill match is{" "}
+                        <strong>
+                          {result.skillScore}%
+                        </strong>.
+                        Focus first on the missing skills identified
+                        in your analysis.
+                      </p>
+
+                    </div>
+
+                    <div className="report-box">
+
+                      <h3>
+                        🎯 Career Readiness
+                      </h3>
+
+                      <p>
+                        Your current readiness score is{" "}
+                        <strong>
+                          {result.score}%
+                        </strong>.
+                        Your academic score contributes to the overall
+                        profile assessment.
+                      </p>
+
+                    </div>
+
+                    <div className="report-box">
+
+                      <h3>
+                        🗓️ 90-Day Roadmap
+                      </h3>
+
+                      <ul className="report-list">
+                        <li>
+                          Strengthen missing technical skills
+                        </li>
+                        <li>
+                          Build role-specific projects
+                        </li>
+                        <li>
+                          Improve resume and GitHub
+                        </li>
+                        <li>
+                          Practice technical interviews
+                        </li>
+                      </ul>
+
+                    </div>
+
+                    <div className="report-box">
+
+                      <h3>
+                        🚀 Recommended Next Steps
+                      </h3>
+
+                      <ul className="report-list">
+                        {result.missingSkills
+                          .slice(0, 4)
+                          .map((skill) => (
+                            <li key={skill}>
+                              Learn and practice {skill}
+                            </li>
+                          ))}
+
+                        <li>
+                          Build one practical project
+                        </li>
+
+                        <li>
+                          Prepare for internships and jobs
+                        </li>
+                      </ul>
+
+                    </div>
+
                   </div>
 
                   <button
                     type="button"
-                    className="premium-btn"
-                    onClick={() => setShowReport(!showReport)}
+                    className="report-close"
+                    onClick={() => setShowReport(false)}
                   >
-                    {showReport
-                      ? "Hide Detailed Report ↑"
-                      : "Preview Detailed Report →"}
+                    Close Preview
                   </button>
+
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* DETAILED REPORT PREVIEW */}
-            {showReport && (
-              <div className="detailed-report">
-                <div className="detailed-report-header">
-                  <div>
-                    <span className="ai-label">
-                      CAREERPILOT PLUS REPORT
-                    </span>
-
-                    <h2>
-                      {result.name}'s Career Preparation Plan
-                    </h2>
-
-                    <p>
-                      Target role:{" "}
-                      <strong>{result.targetRole}</strong>
-                    </p>
-                  </div>
-
-                  <div className="report-score">
-                    <span>Readiness</span>
-                    <strong>{result.score}/100</strong>
-                  </div>
-                </div>
-
-                <div className="report-summary-grid">
-                  <div className="report-summary-box">
-                    <span>🎓</span>
-
-                    <div>
-                      <small>Academic Profile</small>
-                      <strong>
-                        {result.cgpa}/10 CGPA
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="report-summary-box">
-                    <span>💻</span>
-
-                    <div>
-                      <small>Skill Match</small>
-                      <strong>
-                        {result.skillScore}%
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="report-summary-box">
-                    <span>🎯</span>
-
-                    <div>
-                      <small>Target Role</small>
-                      <strong>
-                        {result.targetRole}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="report-summary-box">
-                    <span>📚</span>
-
-                    <div>
-                      <small>Missing Skills</small>
-                      <strong>
-                        {result.missingSkills.length}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="detailed-report-section">
-                  <div className="detailed-section-title">
-                    <span>🔍</span>
-
-                    <div>
-                      <span>01</span>
-                      <h3>Skill Gap Analysis</h3>
-                    </div>
-                  </div>
-
-                  <p>
-                    Your current skills were compared with the core
-                    skills commonly associated with your selected target
-                    role inside CareerPilot.
-                  </p>
-
-                  <div className="report-skills-grid">
-                    <div>
-                      <h4>Skills You Already Have</h4>
-
-                      {result.matchedSkills.length > 0 ? (
-                        <ul>
-                          {result.matchedSkills.map((skill) => (
-                            <li key={skill}>
-                              <span>✓</span>
-                              {skill}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p>No matched skills recorded yet.</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4>Skills To Prioritize</h4>
-
-                      {result.missingSkills.length > 0 ? (
-                        <ul>
-                          {result.missingSkills.map((skill) => (
-                            <li key={skill}>
-                              <span>→</span>
-                              {skill}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p>
-                          You matched all listed core skills.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="detailed-report-section">
-                  <div className="detailed-section-title">
-                    <span>🗺️</span>
-
-                    <div>
-                      <span>02</span>
-                      <h3>Your 90-Day Roadmap</h3>
-                    </div>
-                  </div>
-
-                  <div className="ninety-day-grid">
-                    {roadmap.map((item) => (
-                      <div
-                        className="ninety-day-card"
-                        key={item.period}
-                      >
-                        <span>{item.period}</span>
-
-                        <h4>{item.title}</h4>
-
-                        <ul>
-                          {item.items.map((task) => (
-                            <li key={task}>
-                              <span>✓</span>
-                              {task}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="detailed-report-section">
-                  <div className="detailed-section-title">
-                    <span>🚀</span>
-
-                    <div>
-                      <span>03</span>
-                      <h3>Recommended Projects</h3>
-                    </div>
-                  </div>
-
-                  <p>
-                    These project directions can help you turn your
-                    learning into portfolio evidence.
-                  </p>
-
-                  <div className="recommended-projects">
-                    {recommendedProjects.map((project, index) => (
-                      <div
-                        className="recommended-project"
-                        key={project}
-                      >
-                        <span>
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-
-                        <strong>{project}</strong>
-
-                        <small>
-                          Portfolio project idea
-                        </small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="detailed-report-section">
-                  <div className="detailed-section-title">
-                    <span>📝</span>
-
-                    <div>
-                      <span>04</span>
-                      <h3>Resume Improvement Checklist</h3>
-                    </div>
-                  </div>
-
-                  <div className="checklist-grid">
-                    <div>✓ Add your strongest technical skills</div>
-                    <div>✓ Include measurable project outcomes</div>
-                    <div>✓ Add GitHub/project links</div>
-                    <div>✓ Keep your resume focused on your target role</div>
-                    <div>✓ Highlight relevant internships and certifications</div>
-                    <div>✓ Remove unnecessary or unrelated information</div>
-                  </div>
-                </div>
-
-                <div className="detailed-report-section">
-                  <div className="detailed-section-title">
-                    <span>🎤</span>
-
-                    <div>
-                      <span>05</span>
-                      <h3>Interview Preparation</h3>
-                    </div>
-                  </div>
-
-                  <div className="interview-topics">
-                    <div>
-                      <strong>Technical Fundamentals</strong>
-                      <p>
-                        Revise the core technologies listed for your
-                        target role.
-                      </p>
-                    </div>
-
-                    <div>
-                      <strong>Project Questions</strong>
-                      <p>
-                        Be prepared to explain your project decisions,
-                        technologies and results.
-                      </p>
-                    </div>
-
-                    <div>
-                      <strong>Behavioral Questions</strong>
-                      <p>
-                        Practice concise answers about teamwork,
-                        challenges and learning.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="detailed-report-section final-report-section">
-                  <div className="detailed-section-title">
-                    <span>🎯</span>
-
-                    <div>
-                      <span>06</span>
-                      <h3>Your Immediate Next Steps</h3>
-                    </div>
-                  </div>
-
-                  <ol className="next-steps-list">
-                    <li>
-                      Start with your highest-priority missing skill.
-                    </li>
-
-                    <li>
-                      Spend focused time practicing it every day.
-                    </li>
-
-                    <li>
-                      Build one practical project around the skill.
-                    </li>
-
-                    <li>
-                      Add the project to your resume and GitHub.
-                    </li>
-
-                    <li>
-                      Practice role-specific interview questions.
-                    </li>
-
-                    <li>
-                      Start applying when your portfolio is ready.
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="report-preview-note">
-                  <span>🔒</span>
-
-                  <p>
-                    This is a preview of the CareerPilot Plus report.
-                    Payment is not connected yet. The current ₹49
-                    button is only a product preview and does not
-                    charge your account.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="ai-disclaimer">
-              <span>ⓘ</span>
-
-              <p>
-                CareerPilot's readiness score is an educational
-                estimate based on the information you provide. It is
-                not a guarantee of employment or interview selection.
-              </p>
             </div>
           </>
         )}
+
       </div>
-    </div>
+    </section>
   );
 }
 
