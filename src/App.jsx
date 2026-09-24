@@ -1,896 +1,863 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
+
 import Auth from "./Auth";
+import Dashboard from "./Dashboard";
 import CareerAnalyzer from "./CareerAnalyzer";
 import CareerAssistant from "./CareerAssistant";
 import ResumeBuilder from "./ResumeBuilder";
 import InterviewPractice from "./InterviewPractice";
 import ProjectGenerator from "./ProjectGenerator";
-import Dashboard from "./Dashboard";
-import { supabase } from "./supabaseClient";
-import "./App.css";
-import Jobs from "./Jobs";
-import Profile from "./Profile";
+import Premium from "./Premium";
+import AdminPayments from "./AdminPayments";
 
-const navigation = [
-  {
-    id: "home",
-    icon: "⌂",
-    label: "Dashboard",
-  },
-  {
-    id: "career",
-    icon: "🎯",
-    label: "Career Analysis",
-  },
-  {
-    id: "assistant",
-    icon: "🤖",
-    label: "AI Assistant",
-  },
-  {
-    id: "roadmap",
-    icon: "🗺️",
-    label: "My Roadmap",
-  },
-  {
-    id: "resume",
-    icon: "📄",
-    label: "Resume Builder",
-  },
-  {
-    id: "interview",
-    icon: "🎤",
-    label: "Interview Practice",
-  },
-  {
-    id: "projects",
-    icon: "🛠️",
-    label: "Project Generator",
-  },
-  {
-    id: "planner",
-    icon: "📅",
-    label: "Study Planner",
-  },
-  {
-    id: "jobs",
-    icon: "💼",
-    label: "Jobs & Internships",
-  },
-  {
-    id: "profile",
-    icon: "👤",
-    label: "Profile",
-  },
-];
+import "./App.css";
 
 function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
 
+  const [activeSection, setActiveSection] = useState("home");
+
+  const [approvedPayment, setApprovedPayment] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(false);
+
+  // --------------------------------------------------
+  // GET SESSION
+  // --------------------------------------------------
   useEffect(() => {
-    let mounted = true;
-
-    const getSession = async () => {
-      const { data } =
-        await supabase.auth.getSession();
-
-      if (!mounted) return;
-
-      setSession(data.session);
-      setLoading(false);
-    };
-
     getSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
-        setSession(newSession);
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+
+      if (!newSession) {
+        setApprovedPayment(null);
+        setIsAdmin(false);
       }
-    );
+    });
 
     return () => {
-      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
-  if (loading) {
+  // --------------------------------------------------
+  // GET USER SESSION
+  // --------------------------------------------------
+  const getSession = async () => {
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      console.error("Session error:", error);
+    }
+
+    setSession(data?.session || null);
+    setLoading(false);
+  };
+
+  // --------------------------------------------------
+  // CHECK PREMIUM + ADMIN
+  // --------------------------------------------------
+  useEffect(() => {
+    if (session?.user?.id) {
+      checkAccess(session.user.id);
+    }
+  }, [session]);
+
+  const checkAccess = async (userId) => {
+    setCheckingAccess(true);
+
+    try {
+      // Check approved payment
+      const { data: payment, error: paymentError } = await supabase
+        .from("payments")
+        .select(
+          "id, package_id, package_name, amount, status, approved_at"
+        )
+        .eq("user_id", userId)
+        .eq("status", "approved")
+        .order("approved_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (paymentError) {
+        console.error("Payment check error:", paymentError);
+        setApprovedPayment(null);
+      } else {
+        setApprovedPayment(payment || null);
+      }
+
+      // Check admin
+      const { data: adminData, error: adminError } = await supabase
+        .from("admins")
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (adminError) {
+        console.error("Admin check error:", adminError);
+        setIsAdmin(false);
+      } else {
+        setIsAdmin(!!adminData);
+      }
+    } catch (error) {
+      console.error("Access check error:", error);
+      setApprovedPayment(null);
+      setIsAdmin(false);
+    } finally {
+      setCheckingAccess(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // LOGOUT
+  // --------------------------------------------------
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+
+    setSession(null);
+    setApprovedPayment(null);
+    setIsAdmin(false);
+    setActiveSection("home");
+  };
+
+  // --------------------------------------------------
+  // NAVIGATION
+  // --------------------------------------------------
+  const handleNavigation = (section) => {
+    setActiveSection(section);
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  // --------------------------------------------------
+  // PACKAGE ACCESS
+  // --------------------------------------------------
+  const packageAccess = {
+    resume: ["resume"],
+
+    career: [
+      "career",
+      "assistant",
+      "roadmap",
+    ],
+
+    interview: [
+      "resume",
+      "interview",
+    ],
+
+    placement: [
+      "resume",
+      "career",
+      "assistant",
+      "roadmap",
+      "interview",
+      "projects",
+    ],
+
+    pro: [
+      "career",
+      "assistant",
+      "roadmap",
+      "resume",
+      "interview",
+      "projects",
+      "planner",
+      "jobs",
+    ],
+  };
+
+  // --------------------------------------------------
+  // FREE TRIAL
+  // --------------------------------------------------
+  const trialKey = session?.user?.id
+    ? `careerpilot_trial_used_${session.user.id}`
+    : null;
+
+  const trialUsed = trialKey
+    ? localStorage.getItem(trialKey) === "true"
+    : false;
+
+  const freeSections = [
+    "home",
+    "profile",
+    "premium",
+  ];
+
+  // --------------------------------------------------
+  // CHECK WHETHER USER CAN ACCESS SECTION
+  // --------------------------------------------------
+  const hasAccess = (section) => {
+    // Home/profile/premium are always available
+    if (freeSections.includes(section)) {
+      return true;
+    }
+
+    // Admin
+    if (section === "admin") {
+      return isAdmin;
+    }
+
+    // Approved payment
+    if (approvedPayment?.package_id) {
+      const allowed =
+        packageAccess[approvedPayment.package_id] || [];
+
+      if (allowed.includes(section)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // --------------------------------------------------
+  // PREMIUM LOCK
+  // --------------------------------------------------
+  const PremiumLock = () => {
     return (
-      <div className="loading-screen">
-        <div className="loading-logo">
+      <div
+        style={{
+          minHeight: "70vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "40px 20px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: "650px",
+            width: "100%",
+            textAlign: "center",
+            padding: "45px 30px",
+            borderRadius: "24px",
+            background:
+              "linear-gradient(135deg, #ffffff, #f5f3ff)",
+            boxShadow:
+              "0 15px 45px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "55px",
+              marginBottom: "15px",
+            }}
+          >
+            🔒
+          </div>
+
+          <h1
+            style={{
+              marginBottom: "12px",
+              color: "#222",
+            }}
+          >
+            Premium Feature
+          </h1>
+
+          <p
+            style={{
+              color: "#666",
+              fontSize: "16px",
+              lineHeight: "1.6",
+              marginBottom: "25px",
+            }}
+          >
+            This feature is available with a CareerPilot
+            one-time package.
+          </p>
+
+          <button
+            onClick={() => handleNavigation("premium")}
+            style={{
+              border: "none",
+              borderRadius: "12px",
+              padding: "14px 30px",
+              fontSize: "16px",
+              fontWeight: "600",
+              cursor: "pointer",
+              background:
+                "linear-gradient(135deg, #6c5ce7, #8e44ad)",
+              color: "white",
+              boxShadow:
+                "0 8px 20px rgba(108,92,231,0.3)",
+            }}
+          >
+            View Premium Packages
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // --------------------------------------------------
+  // RENDER SECTION
+  // --------------------------------------------------
+  const renderSection = () => {
+    // HOME
+    if (activeSection === "home") {
+      return (
+        <Dashboard
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // PROFILE
+    if (activeSection === "profile") {
+      const user = session?.user;
+
+      return (
+        <div
+          style={{
+            maxWidth: "900px",
+            margin: "40px auto",
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "20px",
+              padding: "35px",
+              boxShadow:
+                "0 10px 35px rgba(0,0,0,0.08)",
+            }}
+          >
+            <h1>👤 My Profile</h1>
+
+            <div style={{ marginTop: "25px" }}>
+              <p>
+                <strong>Name:</strong>{" "}
+                {user?.user_metadata?.full_name ||
+                  "CareerPilot User"}
+              </p>
+
+              <p>
+                <strong>Email:</strong>{" "}
+                {user?.email || "Not available"}
+              </p>
+
+              <p>
+                <strong>Account:</strong> Active
+              </p>
+
+              <p>
+                <strong>Premium:</strong>{" "}
+                {approvedPayment
+                  ? `Yes — ${approvedPayment.package_name}`
+                  : "No"}
+              </p>
+
+              {isAdmin && (
+                <p>
+                  <strong>Role:</strong> Administrator
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={handleLogout}
+              style={{
+                marginTop: "25px",
+                padding: "12px 25px",
+                border: "none",
+                borderRadius: "10px",
+                background: "#e74c3c",
+                color: "white",
+                cursor: "pointer",
+                fontWeight: "600",
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // PREMIUM
+    if (activeSection === "premium") {
+      return (
+        <Premium
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // ADMIN
+    if (activeSection === "admin") {
+      if (!isAdmin) {
+        return <PremiumLock />;
+      }
+
+      return <AdminPayments />;
+    }
+
+    // CAREER ANALYSIS
+    if (activeSection === "career") {
+      if (!hasAccess("career")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <CareerAnalyzer
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // AI ASSISTANT
+    if (activeSection === "assistant") {
+      if (!hasAccess("assistant")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <CareerAssistant
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // RESUME
+    if (activeSection === "resume") {
+      if (!hasAccess("resume")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <ResumeBuilder
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // INTERVIEW
+    if (activeSection === "interview") {
+      if (!hasAccess("interview")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <InterviewPractice
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // PROJECTS
+    if (activeSection === "projects") {
+      if (!hasAccess("projects")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <ProjectGenerator
+          onNavigate={handleNavigation}
+        />
+      );
+    }
+
+    // ROADMAP
+    if (activeSection === "roadmap") {
+      if (!hasAccess("roadmap")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <ComingSoon
+          title="Career Roadmap"
+          icon="🗺️"
+        />
+      );
+    }
+
+    // PLANNER
+    if (activeSection === "planner") {
+      if (!hasAccess("planner")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <ComingSoon
+          title="Study Planner"
+          icon="📚"
+        />
+      );
+    }
+
+    // JOBS
+    if (activeSection === "jobs") {
+      if (!hasAccess("jobs")) {
+        return <PremiumLock />;
+      }
+
+      return (
+        <ComingSoon
+          title="Job Opportunities"
+          icon="💼"
+        />
+      );
+    }
+
+    return (
+      <Dashboard
+        onNavigate={handleNavigation}
+      />
+    );
+  };
+
+  // --------------------------------------------------
+  // LOADING
+  // --------------------------------------------------
+  if (loading || checkingAccess) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: "15px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "40px",
+          }}
+        >
           🚀
         </div>
 
-        <h2>CareerPilot AI</h2>
-
-        <p>
-          Preparing your career workspace...
-        </p>
+        <h2>Loading CareerPilot AI...</h2>
       </div>
     );
   }
 
-  if (!session && showAuth) {
+  // --------------------------------------------------
+  // LOGIN / SIGNUP
+  // --------------------------------------------------
+  if (!session) {
     return (
       <Auth
-        onLogin={(user) => {
-          if (user) {
-            setSession({
-              user,
-            });
-          } else {
-            setShowAuth(false);
-          }
+        onLogin={(newSession) => {
+          setSession(newSession);
+          setActiveSection("home");
         }}
       />
     );
   }
 
-  if (!session) {
-    return (
-      <LandingPage
-        onGetStarted={() =>
-          setShowAuth(true)
-        }
-      />
-    );
-  }
-
+  // --------------------------------------------------
+  // MAIN APP
+  // --------------------------------------------------
   return (
-    <CareerPilotApp
-      user={session.user}
-      onLogout={async () => {
-        await supabase.auth.signOut();
-
-        setSession(null);
-        setShowAuth(false);
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f7f8fc",
       }}
-    />
-  );
-}
-
-function CareerPilotApp({
-  user,
-  onLogout,
-}) {
-  const [activeSection, setActiveSection] =
-    useState("home");
-
-  const [mobileMenuOpen, setMobileMenuOpen] =
-    useState(false);
-
-  const handleNavigation = (section) => {
-    setActiveSection(section);
-    setMobileMenuOpen(false);
-  };
-
-  const getSectionTitle = () => {
-    const titles = {
-      home: "Dashboard",
-      career: "Career Analysis",
-      assistant: "AI Career Assistant",
-      roadmap: "My Roadmap",
-      resume: "Resume Builder",
-      interview: "Interview Practice",
-      projects: "Project Generator",
-      planner: "Study Planner",
-      jobs: "Jobs & Internships",
-      profile: "Profile",
-    };
-
-    return (
-      titles[activeSection] ||
-      "Dashboard"
-    );
-  };
-
-  return (
-    <div className="workspace">
-      <aside
-        className={`sidebar ${
-          mobileMenuOpen
-            ? "sidebar-open"
-            : ""
-        }`}
+    >
+      {/* NAVBAR */}
+      <nav
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 1000,
+          background: "white",
+          borderBottom:
+            "1px solid rgba(0,0,0,0.08)",
+          boxShadow:
+            "0 3px 15px rgba(0,0,0,0.05)",
+        }}
       >
-        <div className="sidebar-brand">
-          <div className="brand-icon">
-            🚀
-          </div>
-
-          <div>
-            <strong>CareerPilot</strong>
-            <span>AI WORKSPACE</span>
-          </div>
-        </div>
-
-        <div className="sidebar-user">
-          <div className="sidebar-avatar">
-            {(
-              user?.user_metadata?.full_name ||
-              user?.email ||
-              "S"
-            )[0].toUpperCase()}
-          </div>
-
-          <div>
-            <strong>
-              {user?.user_metadata?.full_name ||
-                "Student"}
-            </strong>
-
-            <span>
-              {user?.email ||
-                "CareerPilot User"}
-            </span>
-          </div>
-        </div>
-
-        <nav className="sidebar-nav">
-          {navigation.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={
-                activeSection === item.id
-                  ? "nav-item active"
-                  : "nav-item"
-              }
-              onClick={() =>
-                handleNavigation(
-                  item.id
-                )
-              }
-            >
-              <span className="nav-icon">
-                {item.icon}
-              </span>
-
-              <span>
-                {item.label}
-              </span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-tip">
-          <span>💡</span>
-
-          <div>
-            <strong>Career Tip</strong>
-
-            <p>
-              Build projects that prove
-              your skills.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="logout-button"
-          onClick={onLogout}
-        >
-          ↪ Logout
-        </button>
-      </aside>
-
-      {mobileMenuOpen && (
         <div
-          className="mobile-overlay"
-          onClick={() =>
-            setMobileMenuOpen(false)
-          }
-        />
-      )}
-
-      <main className="workspace-main">
-        <header className="topbar">
-          <div className="topbar-left">
-            <button
-              type="button"
-              className="mobile-menu-button"
-              onClick={() =>
-                setMobileMenuOpen(
-                  !mobileMenuOpen
-                )
-              }
-            >
-              ☰
-            </button>
-
-            <div>
-              <div className="breadcrumb">
-                CareerPilot / Workspace
-              </div>
-
-              <h1>
-                {getSectionTitle()}
-              </h1>
-            </div>
-          </div>
-
-          <div className="topbar-right">
-            <button
-              type="button"
-              className="notification-button"
-            >
-              🔔
-            </button>
-
-            <div className="topbar-user">
-              <div className="topbar-avatar">
-                {(
-                  user?.user_metadata?.full_name ||
-                  user?.email ||
-                  "S"
-                )[0].toUpperCase()}
-              </div>
-
-              <div>
-                <strong>
-                  {user?.user_metadata?.full_name ||
-                    "Student"}
-                </strong>
-
-                <span>
-                  Student
-                </span>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="workspace-content">
-          {activeSection === "home" && (
-            <DashboardHome
-              user={user}
-              onNavigate={
-                handleNavigation
-              }
-            />
-          )}
-
-          {activeSection === "career" && (
-            <CareerAnalyzer
-              user={user}
-            />
-          )}
-
-          {activeSection === "assistant" && (
-            <CareerAssistant
-              user={user}
-            />
-          )}
-
-          {activeSection === "resume" && (
-            <ResumeBuilder
-              user={user}
-            />
-          )}
-
-          {activeSection === "interview" && (
-            <InterviewPractice
-              user={user}
-            />
-          )}
-
-          {activeSection === "projects" && (
-            <ProjectGenerator
-              user={user}
-            />
-          )}
-
-          {activeSection === "roadmap" && (
-            <ComingSoon
-              icon="🗺️"
-              title="Personal Career Roadmap"
-              description="Your personalized skill and career roadmap will appear here."
-              onStart={() =>
-                handleNavigation(
-                  "career"
-                )
-              }
-              buttonText="Start Career Analysis"
-            />
-          )}
-
-          {activeSection === "planner" && (
-            <ComingSoon
-              icon="📅"
-              title="Study Planner"
-              description="Plan your daily learning, tasks and career preparation."
-              buttonText="Study Planner Coming Soon"
-            />
-          )}
-
-          {activeSection === "jobs" && (
-            <ComingSoon
-              icon="💼"
-              title="Jobs & Internships"
-              description="Your personalized internship and job discovery workspace will appear here."
-              buttonText="Jobs Module Coming Soon"
-            />
-          )}
-
-          {activeSection === "profile" && (
-            <ProfilePage user={user} />
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function DashboardHome({
-  user,
-  onNavigate,
-}) {
-  const name =
-    user?.user_metadata?.full_name ||
-    "Student";
-
-  return (
-    <section className="dashboard-home">
-      <div className="dashboard-welcome">
-        <div>
-          <span className="dashboard-eyebrow">
-            YOUR CAREER WORKSPACE
-          </span>
-
-          <h2>
-            Welcome back,{" "}
-            <strong>{name}</strong> 👋
-          </h2>
-
-          <p>
-            Build your skills, improve your
-            readiness and move closer to
-            your target career.
-          </p>
-
-          <div className="dashboard-actions">
-            <button
-              type="button"
-              onClick={() =>
-                onNavigate("career")
-              }
-            >
-              Analyze My Career →
-            </button>
-
-            <button
-              type="button"
-              className="secondary-action"
-              onClick={() =>
-                onNavigate(
-                  "assistant"
-                )
-              }
-            >
-              Ask AI Assistant
-            </button>
-          </div>
-        </div>
-
-        <div className="dashboard-visual">
-          <div className="visual-orbit orbit-one" />
-          <div className="visual-orbit orbit-two" />
-
-          <div className="visual-rocket">
-            🚀
-          </div>
-        </div>
-      </div>
-
-      <div className="dashboard-stats">
-        <StatCard
-          icon="🎯"
-          title="Career Readiness"
-          value="0%"
-          subtitle="Complete analysis"
-        />
-
-        <StatCard
-          icon="📚"
-          title="Skill Gaps"
-          value="—"
-          subtitle="Analyze your profile"
-        />
-
-        <StatCard
-          icon="📄"
-          title="Resume"
-          value="0%"
-          subtitle="Build your resume"
-        />
-
-        <StatCard
-          icon="💼"
-          title="Applications"
-          value="0"
-          subtitle="Track your progress"
-        />
-      </div>
-
-      <div className="dashboard-tools">
-        <div className="section-heading">
-          <div>
-            <span>
-              CAREERPILOT TOOLS
-            </span>
-
-            <h2>
-              Start building your career
-            </h2>
-          </div>
-        </div>
-
-        <div className="tool-grid">
-          <ToolCard
-            icon="🎯"
-            title="Career Analysis"
-            text="Find skill gaps and calculate your current readiness."
-            button="Analyze"
-            onClick={() =>
-              onNavigate("career")
-            }
-          />
-
-          <ToolCard
-            icon="🤖"
-            title="AI Career Assistant"
-            text="Ask career questions about skills, projects and interviews."
-            button="Ask AI"
-            onClick={() =>
-              onNavigate(
-                "assistant"
-              )
-            }
-          />
-
-          <ToolCard
-            icon="📄"
-            title="Resume Builder"
-            text="Create a professional student resume with a live preview."
-            button="Build Resume"
-            onClick={() =>
-              onNavigate("resume")
-            }
-          />
-
-          <ToolCard
-            icon="🎤"
-            title="Interview Practice"
-            text="Practice technical and HR interview questions."
-            button="Practice"
-            onClick={() =>
-              onNavigate(
-                "interview"
-              )
-            }
-          />
-
-          <ToolCard
-            icon="🛠️"
-            title="Project Generator"
-            text="Generate portfolio projects based on your target career."
-            button="Generate"
-            onClick={() =>
-              onNavigate(
-                "projects"
-              )
-            }
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function StatCard({
-  icon,
-  title,
-  value,
-  subtitle,
-}) {
-  return (
-    <div className="stat-card">
-      <div className="stat-icon">
-        {icon}
-      </div>
-
-      <div>
-        <span>{title}</span>
-        <strong>{value}</strong>
-        <small>{subtitle}</small>
-      </div>
-    </div>
-  );
-}
-
-function ToolCard({
-  icon,
-  title,
-  text,
-  button,
-  onClick,
-}) {
-  return (
-    <div className="tool-card">
-      <div className="tool-icon">
-        {icon}
-      </div>
-
-      <h3>{title}</h3>
-
-      <p>{text}</p>
-
-      <button
-        type="button"
-        onClick={onClick}
-      >
-        {button} →
-      </button>
-    </div>
-  );
-}
-
-function ComingSoon({
-  icon,
-  title,
-  description,
-  buttonText,
-  onStart,
-}) {
-  return (
-    <section className="coming-soon-page">
-      <div className="coming-soon-card">
-        <div className="coming-soon-icon">
-          {icon}
-        </div>
-
-        <span>
-          CAREERPILOT AI
-        </span>
-
-        <h1>{title}</h1>
-
-        <p>{description}</p>
-
-        {onStart ? (
-          <button
-            type="button"
-            onClick={onStart}
-          >
-            {buttonText} →
-          </button>
-        ) : (
-          <div className="coming-badge">
-            ⚡ Module in development
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ProfilePage({ user }) {
-  const fullName =
-    user?.user_metadata?.full_name ||
-    "Student";
-
-  return (
-    <section className="profile-page">
-      <div className="profile-card">
-        <div className="profile-large-avatar">
-          {fullName[0]?.toUpperCase()}
-        </div>
-
-        <span className="profile-label">
-          CAREERPILOT ACCOUNT
-        </span>
-
-        <h1>{fullName}</h1>
-
-        <p>{user?.email}</p>
-
-        <div className="profile-info-grid">
-          <div>
-            <span>Account ID</span>
-
-            <strong>
-              {user?.id
-                ? `${user.id.slice(
-                    0,
-                    8
-                  )}...`
-                : "—"}
-            </strong>
-          </div>
-
-          <div>
-            <span>
-              Authentication
-            </span>
-
-            <strong>
-              Supabase Auth
-            </strong>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LandingPage({
-  onGetStarted,
-}) {
-  return (
-    <div className="landing-page">
-      <nav className="landing-nav">
-        <div className="landing-brand">
-          <span>🚀</span>
-
-          <strong>
-            CareerPilot AI
-          </strong>
-        </div>
-
-        <button
-          type="button"
-          onClick={onGetStarted}
+          style={{
+            maxWidth: "1250px",
+            margin: "auto",
+            padding: "14px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "20px",
+            flexWrap: "wrap",
+          }}
         >
-          Get Started →
-        </button>
+          {/* LOGO */}
+          <div
+            onClick={() =>
+              handleNavigation("home")
+            }
+            style={{
+              fontSize: "22px",
+              fontWeight: "800",
+              cursor: "pointer",
+              color: "#6c5ce7",
+            }}
+          >
+            🚀 CareerPilot AI
+          </div>
+
+          {/* NAV LINKS */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+            }}
+          >
+            <NavButton
+              text="Home"
+              onClick={() =>
+                handleNavigation("home")
+              }
+              active={activeSection === "home"}
+            />
+
+            <NavButton
+              text="Career"
+              onClick={() =>
+                handleNavigation("career")
+              }
+              active={activeSection === "career"}
+            />
+
+            <NavButton
+              text="AI Assistant"
+              onClick={() =>
+                handleNavigation("assistant")
+              }
+              active={
+                activeSection === "assistant"
+              }
+            />
+
+            <NavButton
+              text="Resume"
+              onClick={() =>
+                handleNavigation("resume")
+              }
+              active={
+                activeSection === "resume"
+              }
+            />
+
+            <NavButton
+              text="Interview"
+              onClick={() =>
+                handleNavigation("interview")
+              }
+              active={
+                activeSection === "interview"
+              }
+            />
+
+            <NavButton
+              text="Projects"
+              onClick={() =>
+                handleNavigation("projects")
+              }
+              active={
+                activeSection === "projects"
+              }
+            />
+
+            <NavButton
+              text="Premium"
+              onClick={() =>
+                handleNavigation("premium")
+              }
+              active={
+                activeSection === "premium"
+              }
+            />
+
+            {isAdmin && (
+              <NavButton
+                text="Admin"
+                onClick={() =>
+                  handleNavigation("admin")
+                }
+                active={
+                  activeSection === "admin"
+                }
+              />
+            )}
+
+            <NavButton
+              text="Profile"
+              onClick={() =>
+                handleNavigation("profile")
+              }
+              active={
+                activeSection === "profile"
+              }
+            />
+          </div>
+
+          {/* USER */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "14px",
+                color: "#555",
+              }}
+            >
+              {session.user?.user_metadata
+                ?.full_name ||
+                session.user?.email
+                  ?.split("@")[0] ||
+                "User"}
+            </span>
+
+            <button
+              onClick={handleLogout}
+              style={{
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 14px",
+                cursor: "pointer",
+                background: "#f1f1f1",
+                color: "#333",
+                fontWeight: "600",
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
       </nav>
 
-      <main>
-        <section className="landing-hero">
-          <div className="hero-badge">
-            ✦ AI-POWERED CAREER WORKSPACE
-          </div>
+      {/* PAGE CONTENT */}
+      <main>{renderSection()}</main>
 
-          <h1>
-            Turn your college journey
-            <br />
-            into a{" "}
-            <span>
-              career roadmap.
-            </span>
-          </h1>
+      {/* FOOTER */}
+      <footer
+        style={{
+          marginTop: "60px",
+          padding: "30px 20px",
+          textAlign: "center",
+          background: "#111827",
+          color: "#d1d5db",
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          © 2026 CareerPilot AI
+        </p>
 
-          <p>
-            CareerPilot AI helps students
-            understand their skills, build
-            projects, improve resumes and
-            prepare for interviews.
-          </p>
-
-          <div className="hero-actions">
-            <button
-              type="button"
-              onClick={onGetStarted}
-            >
-              Start Your Career Journey →
-            </button>
-          </div>
-
-          <div className="hero-note">
-            Free to get started · Student
-            focused · No employment guarantee
-          </div>
-        </section>
-
-        <section className="landing-features">
-          <Feature
-            icon="🎯"
-            title="Career Analysis"
-            text="Understand your current skills and identify gaps for your target role."
-          />
-
-          <Feature
-            icon="🤖"
-            title="AI Career Assistant"
-            text="Get practical guidance about skills, projects, resumes and interviews."
-          />
-
-          <Feature
-            icon="📄"
-            title="Resume Builder"
-            text="Create and preview a clean professional student resume."
-          />
-
-          <Feature
-            icon="🎤"
-            title="Interview Practice"
-            text="Practice technical, HR and behavioral interview questions."
-          />
-        </section>
-
-        <section className="landing-how">
-          <span>HOW IT WORKS</span>
-
-          <h2>
-            From student profile to career
-            preparation
-          </h2>
-
-          <div className="how-grid">
-            <HowStep
-              number="01"
-              title="Build your profile"
-              text="Tell CareerPilot about your education, skills and career target."
-            />
-
-            <HowStep
-              number="02"
-              title="Find your gaps"
-              text="Analyze the skills needed for your selected role."
-            />
-
-            <HowStep
-              number="03"
-              title="Build evidence"
-              text="Create projects, improve your resume and practice interviews."
-            />
-
-            <HowStep
-              number="04"
-              title="Prepare for opportunities"
-              text="Use your personalized workspace to organize your career preparation."
-            />
-          </div>
-        </section>
-      </main>
-
-      <footer className="landing-footer">
-        <strong>
-          CareerPilot AI
-        </strong>
-
-        <span>
-          Career guidance is informational
-          and does not guarantee employment.
-        </span>
+        <p
+          style={{
+            marginTop: "8px",
+            fontSize: "13px",
+          }}
+        >
+          Build your career. Build your future. 🚀
+        </p>
       </footer>
     </div>
   );
 }
 
-function Feature({
-  icon,
-  title,
+// --------------------------------------------------
+// NAV BUTTON
+// --------------------------------------------------
+function NavButton({
   text,
+  onClick,
+  active,
 }) {
   return (
-    <div className="landing-feature">
-      <div>{icon}</div>
-
-      <h3>{title}</h3>
-
-      <p>{text}</p>
-    </div>
+    <button
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: active
+          ? "#6c5ce7"
+          : "transparent",
+        color: active
+          ? "white"
+          : "#444",
+        padding: "9px 12px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        fontWeight: active
+          ? "600"
+          : "500",
+        fontSize: "14px",
+      }}
+    >
+      {text}
+    </button>
   );
 }
 
-function HowStep({
-  number,
+// --------------------------------------------------
+// COMING SOON
+// --------------------------------------------------
+function ComingSoon({
   title,
-  text,
+  icon,
 }) {
   return (
-    <div className="how-step">
-      <span>{number}</span>
+    <div
+      style={{
+        minHeight: "65vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "30px",
+      }}
+    >
+      <div
+        style={{
+          background: "white",
+          padding: "50px",
+          borderRadius: "22px",
+          textAlign: "center",
+          boxShadow:
+            "0 10px 35px rgba(0,0,0,0.08)",
+          maxWidth: "600px",
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "60px",
+            marginBottom: "15px",
+          }}
+        >
+          {icon}
+        </div>
 
-      <h3>{title}</h3>
+        <h1>{title}</h1>
 
-      <p>{text}</p>
+        <p
+          style={{
+            color: "#666",
+            lineHeight: "1.6",
+          }}
+        >
+          This feature is coming soon to
+          CareerPilot AI.
+        </p>
+      </div>
     </div>
   );
 }

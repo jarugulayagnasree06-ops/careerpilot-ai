@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-const TASKS_KEY = "careerPilotStudyTasks";
-const SUBJECTS_KEY = "careerPilotSubjects";
-const SESSIONS_KEY = "careerPilotStudySessions";
+import { supabase } from "./supabaseClient";
 
 const defaultSubjects = [
   "Machine Learning",
@@ -10,32 +7,18 @@ const defaultSubjects = [
   "Database Management",
 ];
 
-function loadStorage(key, fallback) {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 function StudyPlanner() {
-  const [subjects, setSubjects] = useState(() =>
-    loadStorage(SUBJECTS_KEY, defaultSubjects)
-  );
+  const [user, setUser] = useState(null);
 
-  const [tasks, setTasks] = useState(() =>
-    loadStorage(TASKS_KEY, [])
-  );
+  const [subjects, setSubjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [sessions, setSessions] = useState([]);
 
-  const [sessions, setSessions] = useState(() =>
-    loadStorage(SESSIONS_KEY, [])
-  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [taskTitle, setTaskTitle] = useState("");
-  const [taskSubject, setTaskSubject] = useState(
-    defaultSubjects[0]
-  );
+  const [taskSubject, setTaskSubject] = useState("");
   const [taskDate, setTaskDate] = useState("");
   const [taskPriority, setTaskPriority] = useState("Medium");
 
@@ -50,46 +33,192 @@ function StudyPlanner() {
   const [todaySessionMinutes, setTodaySessionMinutes] =
     useState(0);
 
+  /*
+   * LOAD USER + STUDY DATA
+   */
   useEffect(() => {
-    localStorage.setItem(
-      TASKS_KEY,
-      JSON.stringify(tasks)
-    );
-  }, [tasks]);
+    loadStudyData();
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem(
-      SUBJECTS_KEY,
-      JSON.stringify(subjects)
-    );
-  }, [subjects]);
+  const loadStudyData = async () => {
+    setLoading(true);
 
-  useEffect(() => {
-    localStorage.setItem(
-      SESSIONS_KEY,
-      JSON.stringify(sessions)
-    );
-  }, [sessions]);
+    try {
+      const {
+        data: { user: currentUser },
+        error: userError,
+      } = await supabase.auth.getUser();
 
+      if (userError) {
+        console.error("User error:", userError);
+        return;
+      }
+
+      if (!currentUser) {
+        console.error("No authenticated user found.");
+        return;
+      }
+
+      setUser(currentUser);
+
+      /*
+       * LOAD SUBJECTS
+       */
+      let { data: subjectData, error: subjectError } =
+        await supabase
+          .from("study_subjects")
+          .select("*")
+          .eq("user_id", currentUser.id)
+          .order("created_at", {
+            ascending: true,
+          });
+
+      if (subjectError) {
+        console.error(
+          "Subject loading error:",
+          subjectError
+        );
+        return;
+      }
+
+      /*
+       * CREATE DEFAULT SUBJECTS FOR NEW USERS
+       */
+      if (!subjectData || subjectData.length === 0) {
+        const defaultRows = defaultSubjects.map(
+          (name) => ({
+            user_id: currentUser.id,
+            name,
+            color: null,
+          })
+        );
+
+        const { data: createdSubjects, error } =
+          await supabase
+            .from("study_subjects")
+            .insert(defaultRows)
+            .select();
+
+        if (error) {
+          console.error(
+            "Default subject creation error:",
+            error
+          );
+        } else {
+          subjectData = createdSubjects || [];
+        }
+      }
+
+      setSubjects(subjectData || []);
+
+      if (subjectData && subjectData.length > 0) {
+        setTaskSubject(subjectData[0].name);
+      }
+
+      /*
+       * LOAD TASKS
+       */
+      const { data: taskData, error: taskError } =
+        await supabase
+          .from("study_tasks")
+          .select("*")
+          .eq("user_id", currentUser.id)
+          .order("created_at", {
+            ascending: false,
+          });
+
+      if (taskError) {
+        console.error(
+          "Task loading error:",
+          taskError
+        );
+      } else {
+        const formattedTasks = (taskData || []).map(
+          (task) => {
+            const subject = (subjectData || []).find(
+              (item) =>
+                item.id === task.subject_id
+            );
+
+            return {
+              id: task.id,
+              title: task.title,
+              subject:
+                subject?.name || "General",
+              subjectId: task.subject_id,
+              dueDate: task.due_date || "",
+              priority:
+                task.priority
+                  ? task.priority.charAt(0).toUpperCase() +
+                    task.priority.slice(1)
+                  : "Medium",
+              completed: task.completed,
+              createdAt: task.created_at,
+              completedDate: task.completed
+                ? task.updated_at
+                : null,
+            };
+          }
+        );
+
+        setTasks(formattedTasks);
+      }
+
+      /*
+       * LOAD STUDY SESSIONS
+       */
+      const {
+        data: sessionData,
+        error: sessionError,
+      } = await supabase
+        .from("study_sessions")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (sessionError) {
+        console.error(
+          "Session loading error:",
+          sessionError
+        );
+      } else {
+        const formattedSessions = (
+          sessionData || []
+        ).map((session) => ({
+          id: session.id,
+          minutes: session.duration_minutes || 0,
+          date:
+            session.completed_at ||
+            session.created_at,
+        }));
+
+        setSessions(formattedSessions);
+      }
+    } catch (error) {
+      console.error(
+        "Study planner loading error:",
+        error
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * TIMER
+   */
   useEffect(() => {
+    if (!timerRunning) return;
+
     const timer = setInterval(() => {
-      if (!timerRunning) return;
-
       setSecondsLeft((previous) => {
         if (previous <= 1) {
           setTimerRunning(false);
 
           if (timerMode === "Focus") {
-            const newSession = {
-              id: Date.now(),
-              minutes: 25,
-              date: new Date().toISOString(),
-            };
-
-            setSessions((previousSessions) => [
-              ...previousSessions,
-              newSession,
-            ]);
+            saveFocusSession();
           }
 
           return timerMode === "Focus"
@@ -104,30 +233,82 @@ function StudyPlanner() {
     return () => clearInterval(timer);
   }, [timerRunning, timerMode]);
 
+  /*
+   * TODAY'S SESSION TIME
+   */
   useEffect(() => {
     const today = new Date().toDateString();
 
     const minutes = sessions
       .filter(
         (session) =>
-          new Date(session.date).toDateString() === today
+          new Date(session.date).toDateString() ===
+          today
       )
       .reduce(
-        (total, session) => total + session.minutes,
+        (total, session) =>
+          total + Number(session.minutes || 0),
         0
       );
 
     setTodaySessionMinutes(minutes);
   }, [sessions]);
 
-  const addSubject = () => {
+  /*
+   * SAVE COMPLETED FOCUS SESSION
+   */
+  const saveFocusSession = async () => {
+    if (!user) return;
+
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("study_sessions")
+      .insert({
+        user_id: user.id,
+        subject_id: null,
+        task_id: null,
+        duration_minutes: 25,
+        started_at: new Date(
+          Date.now() - 25 * 60 * 1000
+        ).toISOString(),
+        completed_at: now,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(
+        "Focus session save error:",
+        error
+      );
+      return;
+    }
+
+    const newSession = {
+      id: data.id,
+      minutes: data.duration_minutes,
+      date: data.completed_at || data.created_at,
+    };
+
+    setSessions((previous) => [
+      newSession,
+      ...previous,
+    ]);
+  };
+
+  /*
+   * ADD SUBJECT
+   */
+  const addSubject = async () => {
     const cleanName = subjectName.trim();
 
-    if (!cleanName) return;
+    if (!cleanName || !user) return;
 
     const exists = subjects.some(
       (subject) =>
-        subject.toLowerCase() === cleanName.toLowerCase()
+        subject.name.toLowerCase() ===
+        cleanName.toLowerCase()
     );
 
     if (exists) {
@@ -135,33 +316,101 @@ function StudyPlanner() {
       return;
     }
 
+    setSaving(true);
+
+    const { data, error } = await supabase
+      .from("study_subjects")
+      .insert({
+        user_id: user.id,
+        name: cleanName,
+        color: null,
+      })
+      .select()
+      .single();
+
+    setSaving(false);
+
+    if (error) {
+      console.error(
+        "Subject creation error:",
+        error
+      );
+      alert(
+        "Unable to add subject. Please try again."
+      );
+      return;
+    }
+
     setSubjects((previous) => [
       ...previous,
-      cleanName,
+      data,
     ]);
 
     setTaskSubject(cleanName);
     setSubjectName("");
   };
 
-  const addTask = (event) => {
+  /*
+   * ADD TASK
+   */
+  const addTask = async (event) => {
     event.preventDefault();
 
-    if (!taskTitle.trim()) return;
+    if (!taskTitle.trim() || !user) return;
 
-    const task = {
-      id: Date.now(),
-      title: taskTitle.trim(),
-      subject: taskSubject,
-      dueDate: taskDate,
-      priority: taskPriority,
-      completed: false,
-      createdAt: new Date().toISOString(),
+    const selectedSubject = subjects.find(
+      (subject) =>
+        subject.name === taskSubject
+    );
+
+    setSaving(true);
+
+    const { data, error } = await supabase
+      .from("study_tasks")
+      .insert({
+        user_id: user.id,
+        subject_id:
+          selectedSubject?.id || null,
+        title: taskTitle.trim(),
+        description: null,
+        due_date: taskDate || null,
+        priority:
+          taskPriority.toLowerCase(),
+        completed: false,
+      })
+      .select()
+      .single();
+
+    setSaving(false);
+
+    if (error) {
+      console.error(
+        "Task creation error:",
+        error
+      );
+      alert(
+        "Unable to add task. Please try again."
+      );
+      return;
+    }
+
+    const newTask = {
+      id: data.id,
+      title: data.title,
+      subject:
+        selectedSubject?.name || "General",
+      subjectId: data.subject_id,
+      dueDate: data.due_date || "",
+      priority:
+        data.priority.charAt(0).toUpperCase() +
+        data.priority.slice(1),
+      completed: data.completed,
+      createdAt: data.created_at,
       completedDate: null,
     };
 
     setTasks((previous) => [
-      task,
+      newTask,
       ...previous,
     ]);
 
@@ -170,17 +419,48 @@ function StudyPlanner() {
     setTaskPriority("Medium");
   };
 
-  const toggleTask = (id) => {
+  /*
+   * COMPLETE / UNCOMPLETE TASK
+   */
+  const toggleTask = async (id) => {
+    const currentTask = tasks.find(
+      (task) => task.id === id
+    );
+
+    if (!currentTask) return;
+
+    const newCompleted =
+      !currentTask.completed;
+
+    const { error } = await supabase
+      .from("study_tasks")
+      .update({
+        completed: newCompleted,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error(
+        "Task update error:",
+        error
+      );
+      alert(
+        "Unable to update task."
+      );
+      return;
+    }
+
     setTasks((previous) =>
       previous.map((task) => {
         if (task.id !== id) return task;
 
-        const completed = !task.completed;
-
         return {
           ...task,
-          completed,
-          completedDate: completed
+          completed: newCompleted,
+          completedDate: newCompleted
             ? new Date().toISOString()
             : null,
         };
@@ -188,12 +468,37 @@ function StudyPlanner() {
     );
   };
 
-  const deleteTask = (id) => {
+  /*
+   * DELETE TASK
+   */
+  const deleteTask = async (id) => {
+    const { error } = await supabase
+      .from("study_tasks")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error(
+        "Task deletion error:",
+        error
+      );
+      alert(
+        "Unable to delete task."
+      );
+      return;
+    }
+
     setTasks((previous) =>
-      previous.filter((task) => task.id !== id)
+      previous.filter(
+        (task) => task.id !== id
+      )
     );
   };
 
+  /*
+   * TIMER RESET
+   */
   const resetTimer = () => {
     setTimerRunning(false);
 
@@ -204,6 +509,9 @@ function StudyPlanner() {
     );
   };
 
+  /*
+   * CHANGE TIMER MODE
+   */
   const changeTimerMode = (mode) => {
     setTimerMode(mode);
     setTimerRunning(false);
@@ -215,27 +523,45 @@ function StudyPlanner() {
     );
   };
 
+  /*
+   * FORMAT TIMER
+   */
   const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
+    const minutes = Math.floor(
+      seconds / 60
+    );
 
-    return `${String(minutes).padStart(2, "0")}:${String(
+    const remainingSeconds =
+      seconds % 60;
+
+    return `${String(minutes).padStart(
+      2,
+      "0"
+    )}:${String(
       remainingSeconds
     ).padStart(2, "0")}`;
   };
 
+  /*
+   * FILTER TASKS
+   */
   const filteredTasks = useMemo(() => {
     if (filter === "Completed") {
-      return tasks.filter((task) => task.completed);
+      return tasks.filter(
+        (task) => task.completed
+      );
     }
 
     if (filter === "Pending") {
-      return tasks.filter((task) => !task.completed);
+      return tasks.filter(
+        (task) => !task.completed
+      );
     }
 
     if (filter === "High") {
       return tasks.filter(
-        (task) => task.priority === "High"
+        (task) =>
+          task.priority === "High"
       );
     }
 
@@ -254,7 +580,9 @@ function StudyPlanner() {
     tasks.length === 0
       ? 0
       : Math.round(
-          (completedTasks / tasks.length) * 100
+          (completedTasks /
+            tasks.length) *
+            100
         );
 
   const today = new Date()
@@ -264,6 +592,36 @@ function StudyPlanner() {
   const todayTasks = tasks.filter(
     (task) => task.dueDate === today
   ).length;
+
+  /*
+   * LOADING SCREEN
+   */
+  if (loading) {
+    return (
+      <section className="study-planner-page">
+        <div
+          className="study-card"
+          style={{
+            padding: "60px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: "40px" }}>
+            📚
+          </div>
+
+          <h2>
+            Loading your Study Planner...
+          </h2>
+
+          <p>
+            Syncing your tasks and subjects
+            with CareerPilot AI.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="study-planner-page">
@@ -280,14 +638,15 @@ function StudyPlanner() {
           </h1>
 
           <p>
-            Organize your study tasks, track progress
-            and build consistent learning habits.
+            Organize your study tasks, track
+            progress and build consistent
+            learning habits.
           </p>
         </div>
 
         <div className="study-planner-status">
           <span></span>
-          Focus Workspace
+          Cloud Synced
         </div>
 
       </div>
@@ -303,7 +662,9 @@ function StudyPlanner() {
 
           <div>
             <small>Total Tasks</small>
-            <strong>{tasks.length}</strong>
+            <strong>
+              {tasks.length}
+            </strong>
           </div>
         </div>
 
@@ -314,7 +675,9 @@ function StudyPlanner() {
 
           <div>
             <small>Pending</small>
-            <strong>{pendingTasks}</strong>
+            <strong>
+              {pendingTasks}
+            </strong>
           </div>
         </div>
 
@@ -325,7 +688,9 @@ function StudyPlanner() {
 
           <div>
             <small>Completed</small>
-            <strong>{completedTasks}</strong>
+            <strong>
+              {completedTasks}
+            </strong>
           </div>
         </div>
 
@@ -336,7 +701,9 @@ function StudyPlanner() {
 
           <div>
             <small>Progress</small>
-            <strong>{progress}%</strong>
+            <strong>
+              {progress}%
+            </strong>
           </div>
         </div>
 
@@ -348,17 +715,23 @@ function StudyPlanner() {
 
         <div className="study-planner-left">
 
+          {/* ADD TASK */}
+
           <div className="study-card add-task-card">
 
             <div className="study-card-heading">
+
               <div>
                 <span>01</span>
-                <h2>Add Study Task</h2>
+                <h2>
+                  Add Study Task
+                </h2>
               </div>
 
               <small>
                 {todayTasks} task(s) today
               </small>
+
             </div>
 
             <form onSubmit={addTask}>
@@ -398,14 +771,18 @@ function StudyPlanner() {
                       )
                     }
                   >
-                    {subjects.map((subject) => (
-                      <option
-                        key={subject}
-                        value={subject}
-                      >
-                        {subject}
-                      </option>
-                    ))}
+                    {subjects.map(
+                      (subject) => (
+                        <option
+                          key={subject.id}
+                          value={
+                            subject.name
+                          }
+                        >
+                          {subject.name}
+                        </option>
+                      )
+                    )}
                   </select>
 
                 </div>
@@ -442,6 +819,7 @@ function StudyPlanner() {
                       )
                     }
                   >
+
                     <option value="Low">
                       Low
                     </option>
@@ -453,6 +831,7 @@ function StudyPlanner() {
                     <option value="High">
                       High
                     </option>
+
                   </select>
 
                 </div>
@@ -462,8 +841,11 @@ function StudyPlanner() {
               <button
                 type="submit"
                 className="study-add-task-button"
+                disabled={saving}
               >
-                + Add Task
+                {saving
+                  ? "Saving..."
+                  : "+ Add Task"}
               </button>
 
             </form>
@@ -478,7 +860,9 @@ function StudyPlanner() {
 
               <div>
                 <span>02</span>
-                <h2>My Tasks</h2>
+                <h2>
+                  My Tasks
+                </h2>
               </div>
 
               <div className="task-filters">
@@ -520,84 +904,91 @@ function StudyPlanner() {
                 </h3>
 
                 <p>
-                  Add a study task above and
-                  start building your learning plan.
+                  Add a study task above
+                  and start building
+                  your learning plan.
                 </p>
 
               </div>
             ) : (
               <div className="study-task-list">
 
-                {filteredTasks.map((task) => (
-                  <div
-                    className={
-                      task.completed
-                        ? "study-task completed"
-                        : "study-task"
-                    }
-                    key={task.id}
-                  >
-
-                    <button
-                      className="task-check"
-                      onClick={() =>
-                        toggleTask(task.id)
+                {filteredTasks.map(
+                  (task) => (
+                    <div
+                      className={
+                        task.completed
+                          ? "study-task completed"
+                          : "study-task"
                       }
+                      key={task.id}
                     >
-                      {task.completed
-                        ? "✓"
-                        : ""}
-                    </button>
 
-                    <div className="study-task-info">
+                      <button
+                        className="task-check"
+                        onClick={() =>
+                          toggleTask(
+                            task.id
+                          )
+                        }
+                      >
+                        {task.completed
+                          ? "✓"
+                          : ""}
+                      </button>
 
-                      <strong>
-                        {task.title}
-                      </strong>
+                      <div className="study-task-info">
 
-                      <div className="study-task-meta">
+                        <strong>
+                          {task.title}
+                        </strong>
 
-                        <span>
-                          {task.subject}
-                        </span>
+                        <div className="study-task-meta">
 
-                        {task.dueDate && (
                           <span>
-                            📅{" "}
-                            {new Date(
-                              `${task.dueDate}T00:00:00`
-                            ).toLocaleDateString(
-                              "en-IN",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                              }
-                            )}
+                            {task.subject}
                           </span>
-                        )}
 
-                        <span
-                          className={`priority-${task.priority.toLowerCase()}`}
-                        >
-                          {task.priority}
-                        </span>
+                          {task.dueDate && (
+                            <span>
+                              📅{" "}
+                              {new Date(
+                                `${task.dueDate}T00:00:00`
+                              ).toLocaleDateString(
+                                "en-IN",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                }
+                              )}
+                            </span>
+                          )}
+
+                          <span
+                            className={`priority-${task.priority.toLowerCase()}`}
+                          >
+                            {task.priority}
+                          </span>
+
+                        </div>
 
                       </div>
 
+                      <button
+                        className="task-delete"
+                        onClick={() =>
+                          deleteTask(
+                            task.id
+                          )
+                        }
+                        title="Delete task"
+                      >
+                        ×
+                      </button>
+
                     </div>
-
-                    <button
-                      className="task-delete"
-                      onClick={() =>
-                        deleteTask(task.id)
-                      }
-                      title="Delete task"
-                    >
-                      ×
-                    </button>
-
-                  </div>
-                ))}
+                  )
+                )}
 
               </div>
             )}
@@ -612,7 +1003,9 @@ function StudyPlanner() {
 
               <div>
                 <span>03</span>
-                <h2>My Subjects</h2>
+                <h2>
+                  My Subjects
+                </h2>
               </div>
 
               <small>
@@ -632,7 +1025,10 @@ function StudyPlanner() {
                   )
                 }
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
+                  if (
+                    event.key === "Enter"
+                  ) {
+                    event.preventDefault();
                     addSubject();
                   }
                 }}
@@ -641,26 +1037,31 @@ function StudyPlanner() {
 
               <button
                 onClick={addSubject}
+                disabled={saving}
               >
-                Add
+                {saving
+                  ? "Saving..."
+                  : "Add"}
               </button>
 
             </div>
 
             <div className="subject-list">
 
-              {subjects.map((subject) => (
-                <div
-                  className="subject-chip"
-                  key={subject}
-                >
-                  <span>
-                    📘
-                  </span>
+              {subjects.map(
+                (subject) => (
+                  <div
+                    className="subject-chip"
+                    key={subject.id}
+                  >
+                    <span>
+                      📘
+                    </span>
 
-                  {subject}
-                </div>
-              ))}
+                    {subject.name}
+                  </div>
+                )
+              )}
 
             </div>
 
@@ -697,7 +1098,9 @@ function StudyPlanner() {
                     : ""
                 }
                 onClick={() =>
-                  changeTimerMode("Focus")
+                  changeTimerMode(
+                    "Focus"
+                  )
                 }
               >
                 Focus 25m
@@ -710,7 +1113,9 @@ function StudyPlanner() {
                     : ""
                 }
                 onClick={() =>
-                  changeTimerMode("Break")
+                  changeTimerMode(
+                    "Break"
+                  )
                 }
               >
                 Break 5m
@@ -723,7 +1128,9 @@ function StudyPlanner() {
               <div>
 
                 <strong>
-                  {formatTime(secondsLeft)}
+                  {formatTime(
+                    secondsLeft
+                  )}
                 </strong>
 
                 <span>
@@ -780,9 +1187,11 @@ function StudyPlanner() {
           <div className="study-card progress-card">
 
             <div className="timer-heading">
+
               <span>
                 🎯 TODAY'S PROGRESS
               </span>
+
             </div>
 
             <div className="progress-circle">
@@ -809,7 +1218,8 @@ function StudyPlanner() {
 
             <p>
               {completedTasks} of{" "}
-              {tasks.length} tasks completed.
+              {tasks.length} tasks
+              completed.
             </p>
 
           </div>
@@ -828,9 +1238,10 @@ function StudyPlanner() {
 
             <p>
               Use the focus timer to create
-              distraction-free study sessions.
-              Consistency matters more than
-              studying for very long hours once.
+              distraction-free study
+              sessions. Consistency matters
+              more than studying for very
+              long hours once.
             </p>
 
           </div>
@@ -840,9 +1251,8 @@ function StudyPlanner() {
       </div>
 
       <div className="study-planner-disclaimer">
-        Your study data is stored locally in
-        your browser. It is not a substitute for
-        academic or professional advice.
+        Your study data is securely synced
+        to your CareerPilot account.
       </div>
 
     </section>
